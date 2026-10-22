@@ -1,11 +1,11 @@
-import { deprecation, Filter, GlProgram, GpuProgram, TexturePool } from 'pixi.js';
+import { deprecation, Filter, GlProgram, GpuProgram, RendererType, TexturePool } from 'pixi.js';
 import { vertex, wgslVertex } from '../defaults';
 import fragment from './kawase-blur.frag';
 import source from './kawase-blur.wgsl';
 import fragmentClamp from './kawase-blur-clamp.frag';
 import sourceClamp from './kawase-blur-clamp.wgsl';
 
-import type { FilterSystem, PointData, RenderSurface, Texture } from 'pixi.js';
+import type { FilterSystem, PointData, RenderSurface, Texture, WebGPURenderer } from 'pixi.js';
 
 /** Options for the KawaseBlurFilter constructor. */
 export interface KawaseBlurFilterOptions
@@ -157,7 +157,7 @@ export class KawaseBlurFilter extends Filter
             offset = this._kernels[0] + 0.5;
             this.uniforms.uOffset[0] = offset * uvX;
             this.uniforms.uOffset[1] = offset * uvY;
-            filterManager.applyFilter(this, input, output, clearMode);
+            this._applyPass(filterManager, input, output, clearMode);
         }
         else
         {
@@ -174,7 +174,7 @@ export class KawaseBlurFilter extends Filter
                 offset = this._kernels[i] + 0.5;
                 this.uniforms.uOffset[0] = offset * uvX;
                 this.uniforms.uOffset[1] = offset * uvY;
-                filterManager.applyFilter(this, source, target, true);
+                this._applyPass(filterManager, source, target, true);
 
                 tmp = source;
                 source = target;
@@ -185,8 +185,35 @@ export class KawaseBlurFilter extends Filter
             this.uniforms.uOffset[0] = offset * uvX;
             this.uniforms.uOffset[1] = offset * uvY;
 
-            filterManager.applyFilter(this, source, output, clearMode);
+            this._applyPass(filterManager, source, output, clearMode);
             TexturePool.returnTexture(renderTarget);
+        }
+    }
+
+    private _applyPass(filterManager: FilterSystem, input: Texture, output: RenderSurface, clearMode: boolean): void
+    {
+        const renderer = filterManager.renderer;
+
+        if (renderer.type !== RendererType.WEBGPU)
+        {
+            filterManager.applyFilter(this, input, output, clearMode);
+
+            return;
+        }
+
+        // Queued WebGPU draws need a separate snapshot of each pass's offset.
+        const uniformGroup = this.resources.kawaseBlurUniforms;
+        const batcher = (renderer as WebGPURenderer).renderPipes.uniformBatch;
+
+        this.groups[1].setResource(batcher.getUboResource(uniformGroup), 0);
+
+        try
+        {
+            filterManager.applyFilter(this, input, output, clearMode);
+        }
+        finally
+        {
+            this.groups[1].setResource(uniformGroup, 0);
         }
     }
 

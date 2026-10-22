@@ -7,6 +7,7 @@ const { ipcRenderer } = require('electron');
 const fs = require('fs-extra');
 const path = require('node:path');
 const GIFEncoder = require('gifencoder');
+const verifyKawaseBlur = require('./kawase-blur');
 
 const sourceAssetSize = { width: 640, height: 320 };
 const outputOptions = {
@@ -29,8 +30,10 @@ app.init({
     preference: 'webgpu',
     useBackBuffer: true,
     hello: true,
-}).then(() =>
+}).then(async () =>
 {
+    await verifyKawaseBlur(app.renderer);
+
     const frames = {};
 
     // Make sure directory exists
@@ -263,4 +266,9 @@ app.init({
             ipcRenderer.send('screenshots-done');
         }
     }
+}).catch((error) =>
+{
+    const message = String(error?.stack ?? error) || 'Screenshot verification failed';
+
+    ipcRenderer.send('screenshots-done', message);
 });

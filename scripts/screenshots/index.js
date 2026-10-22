@@ -24,7 +24,18 @@ app.whenReady().then(() =>
         slashes: true,
     }));
 
-    ipcMain.once('screenshots-done', () => main.close());
+    ipcMain.once('screenshots-done', (_event, error) =>
+    {
+        if (error)
+        {
+            console.error(error);
+            app.exit(1);
+        }
+        else
+        {
+            main.close();
+        }
+    });
 });
 
 // Quit when all windows are closed.
